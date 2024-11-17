@@ -4,6 +4,9 @@ import time  # For keeping the script alive
 from dask.distributed import LocalCluster, Client, Scheduler
 from distributed.scheduler import WorkerState, TaskState, decide_worker
 from typing import Callable, Any
+import utils as utils
+
+SCHEDULER_URL = "http://127.0.0.1:5000"
 
 # Override the decide_worker function
 def custom_decide_worker(
@@ -21,6 +24,13 @@ def custom_decide_worker(
     print(f"Deciding worker for task: {ts.key}")
     print(f"All workers: {[worker.address for worker in all_workers]}")
 
+    payload = {"TEST": 1}
+
+    res = utils.send_post_request(SCHEDULER_URL + '/submit_job', payload)
+
+    print("RES: \n")
+    print(res)
+    print("\n\n")
     # Call the original logic for now (this is the same as Dask's original decide_worker)
     # If you want, you can change the logic here
     return decide_worker(ts, all_workers, valid_workers, objective)
