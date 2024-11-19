@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from queue import Queue
 import threading
 import uuid
-
+import random
 # Initialize Flask app and job queue
 app = Flask(__name__)
 job_queue = Queue()  # Queue to hold incoming jobs
@@ -16,14 +16,29 @@ def submit_job():
     job_id = str(uuid.uuid4())
     job_data = request.get_json()  # Get job details from request body
 
-    # Add job to the queue and set initial status
+    # Validate and process the worker IDs in the payload
+    worker_ids = job_data.get("worker_ids")
+    print("Workers IDs Receieved: \n")
+    print(worker_ids)
+    print("\n\n")
+    if not worker_ids or not isinstance(worker_ids, list):
+        return jsonify({"error": "Invalid or missing 'worker_ids' in payload"}), 400
+
+    # Randomly choose a worker from the provided list
+    chosen_worker = random.choice(worker_ids)
     job_data["job_id"] = job_id
+    job_data["chosen_worker"] = chosen_worker
+
+    # Add job to the queue and set initial status
     job_queue.put(job_data)
     job_status[job_id] = "queued"
 
-    # Respond with the job ID and initial status
-    return jsonify({"job_id": job_id, "status": "queued"}), 201
-
+    # Respond with the job ID, chosen worker, and initial status
+    return jsonify({
+        "job_id": job_id,
+        "status": "queued",
+        "chosen_worker": chosen_worker
+    }), 201
 
 # Endpoint to check job status
 @app.route('/job_status/<job_id>', methods=['GET'])
