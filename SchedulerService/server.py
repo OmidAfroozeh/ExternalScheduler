@@ -1,3 +1,5 @@
+import dill
+
 from flask import Flask, request, jsonify
 from queue import Queue
 import threading
@@ -38,6 +40,8 @@ def job_worker():
     while True:
         job_data = job_queue.get()  # Block until a job is available in the queue
         job_id = job_data["job_id"]
+
+        dill.loads(job_data["data"])
 
         # Update job status to "in_progress"
         job_status[job_id] = "in_progress"

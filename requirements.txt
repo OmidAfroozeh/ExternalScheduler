@@ -1,5 +1,5 @@
 # Core dependencies
-dask[distributed]                # For Dask distributed functionality
+dask[distributed]~=2024.11.1
 dask[dataframe]                  # For Dask DataFrames
 dask[array]                      # For Dask Arrays
 dask[bag]                        # For Dask Bags
@@ -13,4 +13,7 @@ dask-jobqueue                     # Dask on job queues (like PBS, SLURM, etc.)
 numpy                             # Array computing library
 pandas                            # Data manipulation library
 
-flask
+flask~=3.1.0
+requests~=2.32.3
+distributed~=2024.11.1
+dill~=0.3.9
