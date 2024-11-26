@@ -1,0 +1,16 @@
+# Core dependencies
+dask[distributed]                # For Dask distributed functionality
+dask[dataframe]                  # For Dask DataFrames
+dask[array]                      # For Dask Arrays
+dask[bag]                        # For Dask Bags
+
+
+# Cluster management (optional, if using Kubernetes or similar)
+dask-kubernetes                   # Dask on Kubernetes
+dask-jobqueue                     # Dask on job queues (like PBS, SLURM, etc.)
+
+# Optional dependencies for enhanced performance or monitoring
+numpy                             # Array computing library
+pandas                            # Data manipulation library
+
+flask
