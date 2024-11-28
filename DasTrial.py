@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def get_ip_address():
     """
-    Get the IP address of the main node (das6).
+    Get the IP address of the main node.
     Tries to return the correct IP address based on system configuration.
     """
     try:
@@ -124,7 +124,7 @@ def get_node_ip(node_name):
 def start_ssh_worker(node_name, ip_address):
     """
     Start the Dask worker on the allocated node using SSH.
-    The worker will connect to the scheduler running on das6.
+    The worker will connect to the scheduler running.
     """
     password = getpass(f"Enter password for {node_name}: ")  # Ask user for SSH password
 
@@ -137,10 +137,10 @@ def start_ssh_worker(node_name, ip_address):
         logger.info(f"Attempting to connect to {node_name} at {ip_address}...")
         
         # Connect to the remote node using SSH
-        ssh.connect(node_name, username='dsys2470', password=password)
+        ssh.connect(node_name, username=USER, password=password)
         logger.info(f"Successfully connected to {node_name} at {ip_address}")
         
-        # Start the Dask worker on the remote node, connecting to the scheduler on das6
+        # Start the Dask worker on the remote node, connecting to the scheduler
         scheduler_ip = get_ip_address()
         logger.info(f"Scheduler IP for Dask worker: {scheduler_ip}")
         
