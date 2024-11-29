@@ -33,6 +33,7 @@ MAINNODE_IP = "127.0.0.1"  #Set later
 JOBWORKER_PORT = 8788
 JOBWORKER_URL = "127.0.0.1" #Set later
 SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
+CLAIM_TIME = '00:15:00'
 
 # Get the IP address of the main node
 def get_ip_address():
@@ -73,7 +74,7 @@ def check_and_reserve_resources():
     while total_reserved_nodes < NODES_AMOUNT:
         logger.info(f"Currently {total_reserved_nodes} nodes reserved. Trying to reserve more...")
         nodes_needed = NODES_AMOUNT - total_reserved_nodes
-        subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', '00:15:00'])
+        subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', CLAIM_TIME])
         time.sleep(5)
         reserved_nodes, total_reserved_nodes = get_reserved_nodes()
     logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
