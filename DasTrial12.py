@@ -26,12 +26,13 @@ logger = logging.getLogger(__name__)
 # Global variables
 USER = 'dsys2470'
 PASSWORD = ''
-SCHEDULER_IP = "127.0.0.1"
-SCHEDULER_PORT = 8788
 DASHBOARD_PORT = 8790
 NODES_AMOUNT = 4
 NODE_THREADS = 4
-SCHEDULER_URL = f"http://{SCHEDULER_IP}:5000"  # For the Flask app
+MAINNODE_IP = "127.0.0.1"  #Set later
+JOBWORKER_PORT = 8788
+JOBWORKER_URL = "127.0.0.1" #Set later
+SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
 
 # Get the IP address of the main node
 def get_ip_address():
@@ -46,8 +47,8 @@ def get_ip_address():
         logger.error(f"Failed to get IP address: {str(e)}")
         return None
 
-SCHEDULER_IP = get_ip_address()  # Update main node IP dynamically
-SCHEDULER_URL = f"tcp://{SCHEDULER_IP}:{SCHEDULER_PORT}"
+MAINNODE_IP = get_ip_address()  # Update main node IP dynamically
+JOBWORKER_URL = f"tcp://{MAINNODE_IP}:{JOBWORKER_PORT}"
 
 # Function to get reserved nodes
 def get_reserved_nodes():
@@ -102,11 +103,11 @@ def start_ssh_worker(node_name, ip_address):
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        logger.info(f"Attempting to start worker node at {node_name} to scheduler at {SCHEDULER_URL}")
+        logger.info(f"Attempting to start worker node at {node_name} to scheduler at {JOBWORKER_URL}")
         ssh.connect(node_name, username=USER, password=get_password(node_name))
         
         # Command to start the Dask worker
-        command = f"nohup dask-worker {SCHEDULER_URL} --nthreads {NODE_THREADS} > dask-worker.log 2>&1 &"
+        command = f"nohup dask-worker {JOBWORKER_URL} --nthreads {NODE_THREADS} > dask-worker.log 2>&1 &"
         
         # Execute the command
         stdin, stdout, stderr = ssh.exec_command(command)
@@ -128,29 +129,58 @@ def start_ssh_worker(node_name, ip_address):
 
 # Custom worker selection logic
 def custom_decide_worker(
-    ts: TaskState,
-    all_workers: set[WorkerState],
-    valid_workers: set[WorkerState] | None,
-    objective: Callable[[WorkerState], Any]
+        ts: TaskState,
+        all_workers: set[WorkerState],
+        valid_workers: set[WorkerState] | None,
+        objective: Callable[[WorkerState], Any],
 ) -> WorkerState | None:
+    """
+    Custom logic to override Dask's original decide_worker function.
+    This version prints the available workers and the chosen worker to test the override.
+    """
     assert all(dts.who_has for dts in ts.dependencies)
-    candidates = {wws for dts in ts.dependencies for wws in dts.who_has or ()} & all_workers
-    if not candidates and valid_workers:
-        candidates = valid_workers
+    if ts.actor:
+        candidates = all_workers.copy()
+    else:
+        candidates = {wws for dts in ts.dependencies for wws in dts.who_has or ()}
+        candidates &= all_workers
+    if valid_workers is None:
+        if not candidates:
+            candidates = all_workers.copy()
+    else:
+        candidates &= valid_workers
+        if not candidates:
+            candidates = valid_workers
+            if not candidates:
+                if ts.loose_restrictions:
+                    return decide_worker(ts, all_workers, None, objective)
+
     if not candidates:
         return None
-    worker_ids = [worker.address for worker in candidates]
-    payload = {"task_id": ts.key, "worker_ids": worker_ids}
-    res = utils.send_post_request(SCHEDULER_URL + '/submit_job', payload)
-    chosen_worker_id = res.get("chosen_worker") if res else None
-    return next((worker for worker in candidates if worker.address == chosen_worker_id), None)
+    elif len(candidates) == 1:
+        return next(iter(candidates))
+    else:
+        # Prepare the payload with worker IDs
+        worker_ids = [worker.address for worker in candidates]
+        payload = {
+            "task_id": ts.key,  # Task identifier
+            "worker_ids": worker_ids  # List of candidate worker IDs
+        }
+        res = utils.send_post_request(SCHEDULER_URL + '/submit_job', payload)
+        chosen_worker_id = res.get("chosen_worker") if res else None
+        if chosen_worker_id:
+            # Map the chosen worker ID back to a WorkerState
+            for worker in candidates:
+                if worker.address == chosen_worker_id:
+                    return worker
+        return None
 
 # Main function to set up scheduler and workers
 async def main():
     logger.info("Setting up the Dask scheduler and workers...")
 
     # Step 1: Setup Dask client
-    cluster = await distributed.LocalCluster(host="0.0.0.0", dashboard_address=f"0.0.0.0:{DASHBOARD_PORT}", scheduler_port=SCHEDULER_PORT)
+    cluster = await distributed.LocalCluster(host="0.0.0.0", dashboard_address=f"0.0.0.0:{DASHBOARD_PORT}", scheduler_port=JOBWORKER_PORT)
     client = await distributed.Client(cluster)
     logger.info(f"Dask Dashboard available at: {client.dashboard_link}")
     client.scheduler_info()
