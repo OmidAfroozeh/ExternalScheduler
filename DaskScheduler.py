@@ -105,6 +105,7 @@ if __name__ == "__main__":
 
     # Infinite loop to keep the script running (you can manually stop it when done)
 
-    result = y.sum().compute()
-    print("The sum of the array is:", result)
-    time.sleep(20)  # Keeps the program running indefinitely
+    while True:
+        result = y.sum().compute()
+        print("The sum of the array is:", result)
+        time.sleep(20)  # Keeps the program running indefinitely

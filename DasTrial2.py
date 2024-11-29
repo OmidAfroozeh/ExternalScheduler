@@ -2,7 +2,6 @@ import socket
 import subprocess
 import logging
 import time
-import re
 import paramiko
 from getpass import getpass
 from dask.distributed import Client
@@ -33,7 +32,7 @@ def get_ip_address():
 
 # Setup environment variables
 USER = 'dsys2470'
-SCHEDULER_IP = get_ip_address()
+SCHEDULER_IP = get_ip_address()  # Calling get_ip_address after function is defined
 SCHEDULER_PORT = 5000
 NODES_AMOUNT = 4
 
@@ -64,7 +63,7 @@ def get_reserved_nodes():
 
             # The nodes start at the 8th column (index 7), collect them
             if len(parts) > 7:  # Check if we have enough parts in the line
-                nodes = parts[8:]  # Nodes start from the 8th column (index 8)
+                nodes = parts[8:]  # Nodes start from the 9th column (index 8)
 
                 # Filter out non-node strings (e.g., nhosts count, timeouts, etc.)
                 valid_nodes = [node for node in nodes if node.startswith("node")]
@@ -83,19 +82,29 @@ def get_reserved_nodes():
 
 def check_and_reserve_resources():
     """
-    Check if a resource is already reserved for the current user.
-    If not, reserve the required number of nodes.
+    Continuously check and reserve resources until enough nodes are available.
     """
-    total_reserved_nodes = len(get_reserved_nodes())
+    reserved_nodes, total_reserved_nodes = get_reserved_nodes()
 
-    # Calculate how many additional nodes are needed
-    nodes_needed = max(0, NODES_AMOUNT - total_reserved_nodes)
-
-    if nodes_needed > 0:
-        logger.info(f"Requesting {nodes_needed} additional nodes to meet the required {NODES_AMOUNT} nodes.")
+    # Keep trying until we have enough distinct nodes
+    while total_reserved_nodes < NODES_AMOUNT:
+        logger.info(f"Currently {total_reserved_nodes} nodes reserved. Trying to reserve more...")
+        nodes_needed = NODES_AMOUNT - total_reserved_nodes
+        logger.info(f"Requesting {nodes_needed} additional nodes.")
         subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', '00:00:30'])
-    else:
-        logger.info("Sufficient nodes are already reserved.")
+        
+        # Wait a bit before checking again
+        time.sleep(5)
+
+        # Re-check the reserved nodes after attempting to reserve
+        reserved_nodes, total_reserved_nodes = get_reserved_nodes()
+
+        # To ensure we don't accidentally keep reserving the same node
+        reserved_nodes = list(set(reserved_nodes))  # Ensure distinct nodes only
+        logger.info(f"Total nodes reserved: {len(reserved_nodes)} distinct nodes.")
+
+    logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
+    return reserved_nodes
 
 
 def get_node_ip(node_name):
@@ -111,7 +120,6 @@ def get_node_ip(node_name):
             if node_name in line:  # Matching the node name in the reservation list
                 # Extracting the IPs
                 parts = line.split()
-                # Assume the IPs are in positions 1 and 2 
                 ip_addresses = parts[1:]  # Getting all IPs in the line
                 if ip_addresses:
                     # Returning the first available IP address (since there are multiple)
@@ -175,25 +183,8 @@ def start_ssh_worker(node_name, ip_address):
     return True
 
 def main():
-    # Step 1: Get the list of reserved nodes
-    reserved_nodes = get_reserved_nodes()
-
-    # Calculate how many additional nodes are needed
-    nodes_needed = max(0, NODES_AMOUNT - len(reserved_nodes))
-
-    if nodes_needed > 0:
-        logger.info(f"Requesting {nodes_needed} additional nodes to meet the required {NODES_AMOUNT} nodes.")
-        check_and_reserve_resources()  # This will reserve the required nodes
-        logger.info("Resources reserved successfully. Proceeding with worker setup...")
-        logger.info("Waiting a bit before continuing...")
-        time.sleep(5)  # Wait for 5 seconds to ensure the reservation process is completed
-    else:
-        logger.info("Sufficient nodes are already reserved. Skipping reservation.")
-
-    # If there are less than 2 nodes reserved, handle the failure gracefully
-    if len(reserved_nodes) < 2:
-        logger.error("Not enough nodes reserved. Exiting.")
-        return
+    # Step 1: Continuously reserve nodes until enough distinct nodes are reserved
+    reserved_nodes = check_and_reserve_resources()
 
     # Step 2: Retrieve IP addresses dynamically for each node
     node_ips = []
@@ -219,13 +210,8 @@ def main():
 
     # Step 5: Perform some computation (or just keep it alive for testing)
     logger.info("Performing a test Dask computation...")
-    import dask.array as da
-    x = da.random.random((10000, 10000), chunks=(1000, 1000))
-    y = x + x.T
-    
-    while True:
-        result = y.sum().compute()
-        logger.info(f"Initial sum of the array is: {result}")
+    test_computation = client.submit(sum, range(1000000))
+    logger.info(f"Test computation result: {test_computation.result()}")
 
 if __name__ == "__main__":
     main()
