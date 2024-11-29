@@ -26,6 +26,7 @@ SCHEDULER_IP = "127.0.0.1"  # Default to localhost for Dask
 SCHEDULER_PORT = 8788  # Default port for Dask scheduler
 DASHBOARD_PORT = 8790
 NODES_AMOUNT = 4
+NODE_THREADS = 4
 
 # Get the IP address of the main node
 def get_ip_address():
@@ -100,7 +101,7 @@ def start_ssh_worker(node_name, ip_address):
         ssh.connect(node_name, username=USER, password=get_password(node_name))
         
         # Command to start the Dask worker
-        command = f"dask-worker {SCHEDULER_URL} --nthreads 22"
+        command = f"nohup dask-worker {SCHEDULER_URL} --nthreads {NODE_THREADS} > dask-worker.log 2>&1 &"
         
         # Execute the command
         stdin, stdout, stderr = ssh.exec_command(command)
