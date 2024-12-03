@@ -18,6 +18,8 @@ from distributed.scheduler import WorkerState, TaskState, decide_worker
 from typing import Callable, Any
 from getpass import getpass
 import utils as utils
+import time
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -28,12 +30,14 @@ USER = 'dsys2470'
 PASSWORD = ''
 DASHBOARD_PORT = 8790
 NODES_AMOUNT = 4
-NODE_THREADS = 4
+NODE_THREADS = 16
 MAINNODE_IP = "127.0.0.1"  #Set later
 JOBWORKER_PORT = 8788
 JOBWORKER_URL = "127.0.0.1" #Set later
 SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
 CLAIM_TIME = '00:15:00'
+INITIAL_LOCAL_WORKERS = 0 # Initial local workers.
+WORKERS_PER_NODE = 'auto' # Number of workers for the external nodes, set to auto to auto determine based on available cpu cores.
 
 # Get the IP address of the main node
 def get_ip_address():
@@ -75,7 +79,7 @@ def check_and_reserve_resources():
         logger.info(f"Currently {total_reserved_nodes} nodes reserved. Trying to reserve more...")
         nodes_needed = NODES_AMOUNT - total_reserved_nodes
         subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', CLAIM_TIME])
-        time.sleep(5)
+        time.sleep(15)
         reserved_nodes, total_reserved_nodes = get_reserved_nodes()
     logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
     return reserved_nodes
@@ -108,7 +112,7 @@ def start_ssh_worker(node_name, ip_address):
         ssh.connect(node_name, username=USER, password=get_password(node_name))
         
         # Command to start the Dask worker
-        command = f"nohup dask-worker {JOBWORKER_URL} --nthreads {NODE_THREADS} > dask-worker.log 2>&1 &"
+        command = f"nohup dask-worker {JOBWORKER_URL} --nthreads {NODE_THREADS} --nworkers {WORKERS_PER_NODE} > dask-worker.log 2>&1 &"
         
         # Execute the command
         stdin, stdout, stderr = ssh.exec_command(command)
@@ -139,6 +143,8 @@ def custom_decide_worker(
     Custom logic to override Dask's original decide_worker function.
     This version prints the available workers and the chosen worker to test the override.
     """
+    # print(all_workers)
+    # print("\n\n\n\n")
     assert all(dts.who_has for dts in ts.dependencies)
     if ts.actor:
         candidates = all_workers.copy()
@@ -181,7 +187,7 @@ async def main():
     logger.info("Setting up the Dask scheduler and workers...")
 
     # Step 1: Setup Dask client
-    cluster = await distributed.LocalCluster(host="0.0.0.0", dashboard_address=f"0.0.0.0:{DASHBOARD_PORT}", scheduler_port=JOBWORKER_PORT)
+    cluster = await distributed.LocalCluster(n_workers = INITIAL_LOCAL_WORKERS, host="0.0.0.0", dashboard_address=f"0.0.0.0:{DASHBOARD_PORT}", scheduler_port=JOBWORKER_PORT)
     client = await distributed.Client(cluster)
     logger.info(f"Dask Dashboard available at: {client.dashboard_link}")
     client.scheduler_info()
@@ -209,14 +215,20 @@ async def main():
         logger.info("Flask app started in background.")
 
     # Step 4: Override Dask's worker selection logic
-    distributed.scheduler.decide_worker = custom_decide_worker
+    # distributed.scheduler.decide_worker = custom_decide_worker
+
 
     # Step 5: Simple Dask computation
     try:
         while True:
-            x = da.random.random((1000, 1000), chunks=(100, 100))
+            start_time = time.time()  # Capture start time
+            x = da.random.random((100000, 100000), chunks=(10000, 10000))
             result = x.mean().compute()
+            end_time = time.time()  # Capture end time
+            elapsed_time = end_time - start_time  # Calculate elapsed time
+            
             logger.info(f"Computed result: {result}")
+            logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")  # Log the elapsed time
             time.sleep(10)
     except KeyboardInterrupt:
         logger.info("Dask scheduler stopped.")
