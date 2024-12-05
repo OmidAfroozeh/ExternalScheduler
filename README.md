@@ -13,3 +13,9 @@ Then, for the dashboard, dask will need bokeh>=3.1.0 to work.
 To run the project, just use the run button of your IDE.
 After it has been run it should have a dashboard available at 
 ```http://127.0.0.1:8787/status```
+
+
+To enter DAS virtual python environment input command:
+source /.venv/bin/activate
+
+
