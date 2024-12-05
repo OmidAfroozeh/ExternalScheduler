@@ -19,6 +19,7 @@ from typing import Callable, Any
 from getpass import getpass
 import utils as utils
 import time
+from dask.distributed import performance_report
 
 
 # Setup logging
@@ -217,18 +218,27 @@ async def main():
     # Step 4: Override Dask's worker selection logic
     # distributed.scheduler.decide_worker = custom_decide_worker
 
-
-    # Step 5: Simple Dask computation
+    # Step 5: Simple Dask computation with performance_report
     try:
         while True:
-            start_time = time.time()  # Capture start time
-            x = da.random.random((100000, 100000), chunks=(10000, 10000))
-            result = x.mean().compute()
-            end_time = time.time()  # Capture end time
-            elapsed_time = end_time - start_time  # Calculate elapsed time
-            
-            logger.info(f"Computed result: {result}")
-            logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")  # Log the elapsed time
+            # Generate a unique filename for the performance report
+            report_filename = f"dask-report-{int(time.time())}.html"
+
+            # Use performance_report to capture profiling data
+            with performance_report(filename=report_filename):
+                start_time = time.time()  # Capture start time
+
+                # Example Dask computation
+                x = da.random.random((100000, 100000), chunks=(10000, 10000))
+                result = x.mean().compute()
+
+                end_time = time.time()  # Capture end time
+                elapsed_time = end_time - start_time  # Calculate elapsed time
+
+                logger.info(f"Computed result: {result}")
+                logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")
+                logger.info(f"Performance report saved to {report_filename}")
+
             time.sleep(10)
     except KeyboardInterrupt:
         logger.info("Dask scheduler stopped.")
