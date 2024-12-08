@@ -39,6 +39,7 @@ SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
 CLAIM_TIME = '00:15:00'
 INITIAL_LOCAL_WORKERS = 0 # Initial local workers.
 WORKERS_PER_NODE = 'auto' # Number of workers for the external nodes, set to auto to auto determine based on available cpu cores.
+EXPERIMENT_NAME = "test_run"
 
 # Get the IP address of the main node
 def get_ip_address():
@@ -144,8 +145,7 @@ def custom_decide_worker(
     Custom logic to override Dask's original decide_worker function.
     This version prints the available workers and the chosen worker to test the override.
     """
-    # print(all_workers)
-    # print("\n\n\n\n")
+    print("EXECUTING: custom_decide_worker()")
     assert all(dts.who_has for dts in ts.dependencies)
     if ts.actor:
         candidates = all_workers.copy()
@@ -219,31 +219,27 @@ async def main():
     # distributed.scheduler.decide_worker = custom_decide_worker
 
     # Step 5: Simple Dask computation with performance_report
-    try:
-        while True:
-            # Generate a unique filename for the performance report
-            report_filename = f"dask-report-{int(time.time())}.html"
+    report_filename = f"dask-report-{EXPERIMENT_NAME}.html"
 
-            # Use performance_report to capture profiling data
-            with performance_report(filename=report_filename):
-                start_time = time.time()  # Capture start time
+    # Use performance_report to capture profiling data
+    with performance_report(filename=report_filename):
+        start_time = time.time()  # Capture start time
 
-                # Example Dask computation
-                x = da.random.random((100000, 100000), chunks=(10000, 10000))
-                result = x.mean().compute()
+        # Example Dask computation
+        x = da.random.random((100000, 100000), chunks=(10000, 10000))
+        result = x.mean().compute()
 
-                end_time = time.time()  # Capture end time
-                elapsed_time = end_time - start_time  # Calculate elapsed time
+        end_time = time.time()  # Capture end time
+        elapsed_time = end_time - start_time  # Calculate elapsed time
 
-                logger.info(f"Computed result: {result}")
-                logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")
-                logger.info(f"Performance report saved to {report_filename}")
+        logger.info(f"Computed result: {result}")
+        logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")
+        logger.info(f"Performance report saved to {report_filename}")
 
-            time.sleep(10)
-    except KeyboardInterrupt:
-        logger.info("Dask scheduler stopped.")
-        await client.close()
-        await cluster.close()
+            
+    logger.info("Dask scheduler stopped.")
+    await client.close()
+    await cluster.close()
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

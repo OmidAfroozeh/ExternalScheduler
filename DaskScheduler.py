@@ -1,7 +1,8 @@
+import logging
 import distributed.scheduler
 import dask.array as da
 import time  # For keeping the script alive
-from dask.distributed import LocalCluster, Client, Scheduler
+from dask.distributed import LocalCluster, Client, Scheduler, performance_report
 from distributed.scheduler import WorkerState, TaskState, decide_worker
 from typing import Callable, Any
 import utils as utils
@@ -9,8 +10,13 @@ from distributed.protocol.serialize import *
 
 from distributed import worker
 
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 SCHEDULER_URL = "http://127.0.0.1:5000"
+EXPERIMENT_NAME = "test_run"
 
 # Override the decide_worker function
 def custom_decide_worker(
@@ -61,23 +67,7 @@ def custom_decide_worker(
                 if worker.address == chosen_worker_id:
                     return worker
         return None
-    # Print some basic debug info to check if the function is called
-    # print(f"ITS WORKINGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG")
-    # print(f"Deciding worker for task: {ts.key}")
-    # print(f"All workers: {[worker.address for worker in all_workers]}")
-    #
-    #
-    #
-    #
-    # payload = {"TEST": 1}
-    #
-    #
-    # print("RES: \n")
-    # print(res)
-    # print("\n\n")
-    # # Call the original logic for now (this is the same as Dask's original decide_worker)
-    # # If you want, you can change the logic here
-    # return decide_worker(ts, all_workers, valid_workers, objective)
+    
 
 # The main entry point of the script
 if __name__ == "__main__":
@@ -91,21 +81,26 @@ if __name__ == "__main__":
     print("Dask Dashboard available at:", client.dashboard_link)
     print(client)
 
-    # Simple Dask computation: Create a large random array and perform a computation
-    x = da.random.random((10000, 10000), chunks=(1000, 1000))  # Create a Dask array
-    y = x + x.T  # A simple operation: adding the transpose
+    report_filename = f"dask-report-{EXPERIMENT_NAME}.html"
 
-    # Compute the result (this will execute the task graph)
-    result = y.sum().compute()
+    # Use performance_report to capture profiling data
+    with performance_report(filename=report_filename):
+        start_time = time.time()  # Capture start time
+
+        # Example Dask computation
+        x = da.random.random((100000, 100000), chunks=(10000, 10000))
+        result = x.sum().compute()
+
+        end_time = time.time()  # Capture end time
+        elapsed_time = end_time - start_time  # Calculate elapsed time
+
+        logger.info(f"Computed result: {result}")
+        logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")
+        logger.info(f"Performance report saved to {report_filename}")
+
+            
+    logger.info("Dask scheduler stopped.")
+    client.close()
+    cluster.close()
 
     print("The sum of the array is:", result)
-
-    # Keep the client alive to monitor the dashboard
-    print("Waiting for workers to finish...")
-
-    # Infinite loop to keep the script running (you can manually stop it when done)
-
-    while True:
-        result = y.sum().compute()
-        print("The sum of the array is:", result)
-        time.sleep(20)  # Keeps the program running indefinitely
