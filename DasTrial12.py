@@ -192,19 +192,16 @@ def start_ssh_worker(node_name, ip_address):
     return True
 
 # Custom worker selection logic
+# Custom decide_worker method (no changes needed from your provided code)
 def custom_decide_worker(
         ts: TaskState,
         all_workers: set[WorkerState],
         valid_workers: set[WorkerState] | None,
         objective: Callable[[WorkerState], Any],
 ) -> WorkerState | None:
-    """
-    Custom logic to override Dask's original decide_worker function.
-    This version prints the available workers and the chosen worker to test the override.
-    """
-    # print(all_workers)
-    # print("\n\n\n\n")
     assert all(dts.who_has for dts in ts.dependencies)
+
+    # Determine the candidates
     if ts.actor:
         candidates = all_workers.copy()
     else:
@@ -226,19 +223,33 @@ def custom_decide_worker(
     elif len(candidates) == 1:
         return next(iter(candidates))
     else:
-        # Prepare the payload with worker IDs
-        worker_ids = [worker.address for worker in candidates]
+        # Prepare worker information for the payload
+        workers_info = [
+            {
+                "address": worker.address,
+                "memory_limit": worker.memory_limit,
+                # "memory_used": worker.memory,
+                "cpu_cores": worker.nthreads,
+                "tasks_running": len(worker.processing),
+            }
+            for worker in candidates
+        ]
+
         payload = {
-            "task_id": ts.key,  # Task identifier
-            "worker_ids": worker_ids  # List of candidate worker IDs
+            "task_id": ts.key,
+            "workers": workers_info,
         }
-        res = utils.send_post_request(SCHEDULER_URL + '/submit_job', payload)
-        chosen_worker_id = res.get("chosen_worker") if res else None
-        if chosen_worker_id:
-            # Map the chosen worker ID back to a WorkerState
-            for worker in candidates:
-                if worker.address == chosen_worker_id:
-                    return worker
+
+        # Communicate with the external scheduler
+        try:
+            response = requests.post(f"{SCHEDULER_URL}/submit_job", json=payload)
+            if response.status_code == 201:
+                chosen_worker_id = response.json().get("chosen_worker")
+                for worker in candidates:
+                    if worker.address == chosen_worker_id:
+                        return worker
+        except Exception as e:
+            print(f"Error communicating with external scheduler: {e}")
         return None
 
 # Main function to set up scheduler and workers
