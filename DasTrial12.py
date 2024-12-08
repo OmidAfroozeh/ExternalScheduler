@@ -14,12 +14,15 @@ import os
 from dask import array as da
 from dask.distributed import Scheduler as DistributedScheduler
 from dask.distributed import LocalCluster, Client
-from distributed.scheduler import WorkerState, TaskState, decide_worker
+from distributed.scheduler import Scheduler, WorkerState, TaskState, decide_worker
 from typing import Callable, Any
 from getpass import getpass
 import utils as utils
 import time
 from dask.distributed import performance_report
+import distributed.scheduler
+import requests  # For HTTP requests
+
 
 
 # Setup logging
@@ -39,6 +42,61 @@ SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
 CLAIM_TIME = '00:15:00'
 INITIAL_LOCAL_WORKERS = 0 # Initial local workers.
 WORKERS_PER_NODE = 'auto' # Number of workers for the external nodes, set to auto to auto determine based on available cpu cores.
+
+# Custom add_worker method
+async def custom_add_worker(self, comm, address: str, **kwargs):
+    # Register the worker via HTTP
+    try:
+        response = requests.post(
+            f"{SCHEDULER_URL}/register_worker",
+            json={"worker_id": address}
+        )
+        if response.status_code == 201:
+            print(f"Worker {address} successfully registered.")
+        else:
+            print(f"Failed to register worker {address}: {response.json()}")
+    except Exception as e:
+        print(f"Error registering worker {address}: {e}")
+
+    # Call the original add_worker method
+    await Scheduler.add_worker_original(self, comm, address=address, **kwargs)
+
+# Custom remove_worker method
+async def custom_remove_worker(
+        self,
+        address: str,
+        *,
+        stimulus_id: str,
+        expected: bool = False,
+        close: bool = True,
+):
+    # Deregister the worker via HTTP
+    try:
+        response = requests.post(
+            f"{SCHEDULER_URL}/remove_worker",
+            json={"worker_id": address}
+        )
+        if response.status_code == 200:
+            print(f"Worker {address} successfully removed.")
+        else:
+            print(f"Failed to remove worker {address}: {response.json()}")
+    except Exception as e:
+        print(f"Error removing worker {address}: {e}")
+
+    # Call the original remove_worker method
+    return await self.remove_worker_original(
+        address=address,
+        stimulus_id=stimulus_id,
+        expected=expected,
+        close=close,
+    )
+
+# Monkey Patching
+Scheduler.add_worker_original = Scheduler.add_worker
+Scheduler.add_worker = custom_add_worker
+
+Scheduler.remove_worker_original = Scheduler.remove_worker
+Scheduler.remove_worker = custom_remove_worker
 
 # Get the IP address of the main node
 def get_ip_address():
