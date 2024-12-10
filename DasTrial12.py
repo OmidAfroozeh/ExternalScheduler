@@ -14,11 +14,15 @@ import os
 from dask import array as da
 from dask.distributed import Scheduler as DistributedScheduler
 from dask.distributed import LocalCluster, Client
-from distributed.scheduler import WorkerState, TaskState, decide_worker
+from distributed.scheduler import Scheduler, WorkerState, TaskState, decide_worker
 from typing import Callable, Any
 from getpass import getpass
 import utils as utils
 import time
+from dask.distributed import performance_report
+import distributed.scheduler
+import requests  # For HTTP requests
+
 
 
 # Setup logging
@@ -38,6 +42,61 @@ SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
 CLAIM_TIME = '00:15:00'
 INITIAL_LOCAL_WORKERS = 0 # Initial local workers.
 WORKERS_PER_NODE = 'auto' # Number of workers for the external nodes, set to auto to auto determine based on available cpu cores.
+
+# Custom add_worker method
+async def custom_add_worker(self, comm, address: str, **kwargs):
+    # Register the worker via HTTP
+    try:
+        response = requests.post(
+            f"{SCHEDULER_URL}/register_worker",
+            json={"worker_id": address}
+        )
+        if response.status_code == 201:
+            print(f"Worker {address} successfully registered.")
+        else:
+            print(f"Failed to register worker {address}: {response.json()}")
+    except Exception as e:
+        print(f"Error registering worker {address}: {e}")
+
+    # Call the original add_worker method
+    await Scheduler.add_worker_original(self, comm, address=address, **kwargs)
+
+# Custom remove_worker method
+async def custom_remove_worker(
+        self,
+        address: str,
+        *,
+        stimulus_id: str,
+        expected: bool = False,
+        close: bool = True,
+):
+    # Deregister the worker via HTTP
+    try:
+        response = requests.post(
+            f"{SCHEDULER_URL}/remove_worker",
+            json={"worker_id": address}
+        )
+        if response.status_code == 200:
+            print(f"Worker {address} successfully removed.")
+        else:
+            print(f"Failed to remove worker {address}: {response.json()}")
+    except Exception as e:
+        print(f"Error removing worker {address}: {e}")
+
+    # Call the original remove_worker method
+    return await self.remove_worker_original(
+        address=address,
+        stimulus_id=stimulus_id,
+        expected=expected,
+        close=close,
+    )
+
+# Monkey Patching
+Scheduler.add_worker_original = Scheduler.add_worker
+Scheduler.add_worker = custom_add_worker
+
+Scheduler.remove_worker_original = Scheduler.remove_worker
+Scheduler.remove_worker = custom_remove_worker
 
 # Get the IP address of the main node
 def get_ip_address():
@@ -133,6 +192,7 @@ def start_ssh_worker(node_name, ip_address):
     return True
 
 # Custom worker selection logic
+# Custom decide_worker method (no changes needed from your provided code)
 def custom_decide_worker(
         ts: TaskState,
         all_workers: set[WorkerState],
@@ -145,6 +205,8 @@ def custom_decide_worker(
     """
     #print("EXECUTING: custom_decide_worker()")
     assert all(dts.who_has for dts in ts.dependencies)
+
+    # Determine the candidates
     if ts.actor:
         candidates = all_workers.copy()
     else:
@@ -166,19 +228,33 @@ def custom_decide_worker(
     elif len(candidates) == 1:
         return next(iter(candidates))
     else:
-        # Prepare the payload with worker IDs
-        worker_ids = [worker.address for worker in candidates]
+        # Prepare worker information for the payload
+        workers_info = [
+            {
+                "address": worker.address,
+                "memory_limit": worker.memory_limit,
+                # "memory_used": worker.memory,
+                "cpu_cores": worker.nthreads,
+                "tasks_running": len(worker.processing),
+            }
+            for worker in candidates
+        ]
+
         payload = {
-            "task_id": ts.key,  # Task identifier
-            "worker_ids": worker_ids  # List of candidate worker IDs
+            "task_id": ts.key,
+            "workers": workers_info,
         }
-        res = utils.send_post_request(SCHEDULER_URL + '/submit_job', payload)
-        chosen_worker_id = res.get("chosen_worker") if res else None
-        if chosen_worker_id:
-            # Map the chosen worker ID back to a WorkerState
-            for worker in candidates:
-                if worker.address == chosen_worker_id:
-                    return worker
+
+        # Communicate with the external scheduler
+        try:
+            response = requests.post(f"{SCHEDULER_URL}/submit_job", json=payload)
+            if response.status_code == 201:
+                chosen_worker_id = response.json().get("chosen_worker")
+                for worker in candidates:
+                    if worker.address == chosen_worker_id:
+                        return worker
+        except Exception as e:
+            print(f"Error communicating with external scheduler: {e}")
         return None
 
 # Main function to set up scheduler and workers
@@ -216,19 +292,28 @@ async def main():
     # Step 4: Override Dask's worker selection logic
     #distributed.scheduler.decide_worker = custom_decide_worker
 
-
-    # Step 5: Simple Dask computation
+    # Step 5: Simple Dask computation with performance_report
     try:
         while True:
-            start_time = time.time()  # Capture start time
-            x = da.random.random((100000, 100000), chunks=(10000, 10000))
-            result = x.mean().compute()
-            end_time = time.time()  # Capture end time
-            elapsed_time = end_time - start_time  # Calculate elapsed time
-            
-            logger.info(f"Computed result: {result}")
-            logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")  # Log the elapsed time
-            time.sleep(0)
+            # Generate a unique filename for the performance report
+            report_filename = f"dask-report-{int(time.time())}.html"
+
+            # Use performance_report to capture profiling data
+            with performance_report(filename=report_filename):
+                start_time = time.time()  # Capture start time
+
+                # Example Dask computation
+                x = da.random.random((100000, 100000), chunks=(10000, 10000))
+                result = x.mean().compute()
+
+                end_time = time.time()  # Capture end time
+                elapsed_time = end_time - start_time  # Calculate elapsed time
+
+                logger.info(f"Computed result: {result}")
+                logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")
+                logger.info(f"Performance report saved to {report_filename}")
+
+            time.sleep(10)
     except KeyboardInterrupt:
         logger.info("Dask scheduler stopped.")
         await client.close()
