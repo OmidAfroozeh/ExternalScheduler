@@ -143,8 +143,7 @@ def custom_decide_worker(
     Custom logic to override Dask's original decide_worker function.
     This version prints the available workers and the chosen worker to test the override.
     """
-    # print(all_workers)
-    # print("\n\n\n\n")
+    #print("EXECUTING: custom_decide_worker()")
     assert all(dts.who_has for dts in ts.dependencies)
     if ts.actor:
         candidates = all_workers.copy()
@@ -215,7 +214,7 @@ async def main():
         logger.info("Flask app started in background.")
 
     # Step 4: Override Dask's worker selection logic
-    # distributed.scheduler.decide_worker = custom_decide_worker
+    #distributed.scheduler.decide_worker = custom_decide_worker
 
 
     # Step 5: Simple Dask computation
@@ -229,7 +228,7 @@ async def main():
             
             logger.info(f"Computed result: {result}")
             logger.info(f"Time taken for computation: {elapsed_time:.4f} seconds")  # Log the elapsed time
-            time.sleep(10)
+            time.sleep(0)
     except KeyboardInterrupt:
         logger.info("Dask scheduler stopped.")
         await client.close()

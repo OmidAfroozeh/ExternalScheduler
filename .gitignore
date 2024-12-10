@@ -4,3 +4,5 @@
 .venv/bin
 /ExternalScheduler/.venv
 /ExternalScheduler/.venv/
+*.pyc
+*.out

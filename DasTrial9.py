@@ -10,7 +10,7 @@ import random
 from queue import Queue
 import threading
 import socket
-from dask.distributed import Client, Scheduler, Worker, LocalCluster
+
 from dask import array as da
 import os  # Import os for running background processes
 from dask.distributed import Scheduler as DistributedScheduler
@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 USER = 'dsys2470'
 PASSWORD = ''
 SCHEDULER_IP = "127.0.0.1"  # Default to localhost for Dask
-SCHEDULER_PORT = 8786  # Default port for Dask scheduler
+SCHEDULER_PORT = 8799  # Default port for Dask scheduler
+DASHBOARD_PORT = 8798
 NODES_AMOUNT = 4
 
 # Get the IP address of the main node
@@ -65,7 +66,7 @@ def check_and_reserve_resources():
     while total_reserved_nodes < NODES_AMOUNT:
         logger.info(f"Currently {total_reserved_nodes} nodes reserved. Trying to reserve more...")
         nodes_needed = NODES_AMOUNT - total_reserved_nodes
-        subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', '00:00:30'])
+        subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', '00:15:00'])
         time.sleep(5)
         reserved_nodes, total_reserved_nodes = get_reserved_nodes()
     logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
@@ -96,7 +97,7 @@ def start_ssh_worker(node_name, ip_address):
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
         ssh.connect(node_name, username=USER, password=get_password(node_name))
-        command = f"dask-worker {SCHEDULER_IP}:{SCHEDULER_PORT} --nthreads 1 --memory-limit 2GB"
+        command = f"dask-worker {SCHEDULER_URL} --nthreads 1 --memory-limit 2GB"
         ssh.exec_command(command)
         ssh.close()
     except Exception as e:
@@ -104,35 +105,13 @@ def start_ssh_worker(node_name, ip_address):
         return False
     return True
 
-# Custom decide_worker to send the task info to the external scheduler
-def custom_decide_worker(
-        ts, all_workers, valid_workers, objective
-):
-    """
-    Custom logic to override Dask's original decide_worker function.
-    """
-    if valid_workers is None:
-        valid_workers = all_workers
-
-    candidates = valid_workers
-    if not candidates:
-        return None
-    elif len(candidates) == 1:
-        return next(iter(candidates))
-    else:
-        # Send request to external scheduler if necessary
-        worker_ids = [worker.address for worker in candidates]
-        payload = {"task_id": ts.key, "worker_ids": worker_ids}
-        # Add logic to fetch the chosen worker from external scheduler if available
-        return next(iter(candidates))
-
 # Main function to set up scheduler and workers
 async def main():
     logger.info("Setting up the Dask scheduler and workers...")
 
     # Step 1: Set up the Dask Scheduler (default)
-    scheduler = DistributedScheduler(host='0.0.0.0', port='8786')
-    await scheduler.start()
+    #scheduler = DistributedScheduler(host='0.0.0.0', port=SCHEDULER_PORT)
+    #await scheduler.start()  # Correct way to start the scheduler
 
     # Step 2: Reserve and start external workers
     reserved_nodes = check_and_reserve_resources()
@@ -144,16 +123,15 @@ async def main():
     logger.info(f"Dask Scheduler is running at: {SCHEDULER_IP}:{SCHEDULER_PORT}")
     
     # Step 3: Setup Dask client to interact with scheduler
-    cluster = LocalCluster(dashboard_address="0.0.0.0:8788")
-    client = Client(cluster)
+    cluster = distributed.LocalCluster(host="0.0.0.0", dashboard_address=f"0.0.0.0:{DASHBOARD_PORT}", scheduler_port=SCHEDULER_PORT)  # Removed the scheduler_port argument
+    #client = Client(address=f"0.0.0.0:{SCHEDULER_PORT}",)
+    #cluster = LocalCluster()          # Fully-featured local Dask cluster
+    client = distributed.Client(cluster)
+
+    
     print("Dask Dashboard available at:", client.dashboard_link)
 
     client.scheduler_info()
-    
-    # Set custom decide_worker for task allocation
-    distributed.scheduler.decide_worker = custom_decide_worker
-
-    logger.info("Dask Scheduler setup completed.")
     
     # Step 4: Start simple Dask computation in the main thread
     try:
@@ -173,7 +151,8 @@ async def main():
         logger.info("Flask app started in background.")
     except Exception as e:
         logger.error(f"Failed to start Flask app: {e}")
-        
-if __name__ ==  '__main__':
+
+if __name__ == '__main__':
+    from dask.distributed import Client, Scheduler, Worker, LocalCluster
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())

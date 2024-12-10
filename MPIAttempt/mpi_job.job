@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --time=00:15:00
+#SBATCH -N 2
+#SBATCH --ntasks-per-node=16
+
+. /etc/bashrc
+. /etc/profile.d/lmod.sh
+module load openmpi/gcc/64
+
+APP=./cpi
+ARGS=""
+OMPI_OPTS="--mca btl ^usnic"
+MPI_RUN=mpirun
+
+$MPI_RUN $OMPI_OPTS $APP $ARGS
