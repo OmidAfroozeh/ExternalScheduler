@@ -42,6 +42,7 @@ SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
 CLAIM_TIME = '00:15:00'
 INITIAL_LOCAL_WORKERS = 0 # Initial local workers.
 WORKERS_PER_NODE = 'auto' # Number of workers for the external nodes, set to auto to auto determine based on available cpu cores.
+NODE_REQUEST_TIMEOUT = 15 # Reattempt time to receive nodes.
 
 # Custom add_worker method
 async def custom_add_worker(self, comm, address: str, **kwargs):
@@ -134,13 +135,16 @@ def get_reserved_nodes():
 # Function to check and reserve resources
 def check_and_reserve_resources():
     reserved_nodes, total_reserved_nodes = get_reserved_nodes()
+    logger.info(f"Currently {total_reserved_nodes} nodes reserved. Trying to reserve more...")
+    nodes_needed = NODES_AMOUNT - total_reserved_nodes
+    subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', CLAIM_TIME])
     while total_reserved_nodes < NODES_AMOUNT:
-        logger.info(f"Currently {total_reserved_nodes} nodes reserved. Trying to reserve more...")
-        nodes_needed = NODES_AMOUNT - total_reserved_nodes
-        subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', CLAIM_TIME])
-        time.sleep(15)
         reserved_nodes, total_reserved_nodes = get_reserved_nodes()
-    logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
+        if (total_reserved_nodes > NODES_AMOUNT):
+            logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
+        else:
+            logger.info(f"Not sufficient nodes reserved, trying again in {NODE_REQUEST_TIMEOUT} seconds.")
+        time.sleep(NODE_REQUEST_TIMEOUT)
     return reserved_nodes
 
 # Function to get node IP
