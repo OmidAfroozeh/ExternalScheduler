@@ -19,11 +19,11 @@ To enter DAS virtual python environment input command:
 source /.venv/bin/activate
 
 # Use proper python version:
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-chmod +x Miniconda3-latest-Linux-x86_64.sh
-./Miniconda3-latest-Linux-x86_64.sh
-conda create -n myenv python=3.10
-conda activate myenv
+- wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+- chmod +x Miniconda3-latest-Linux-x86_64.sh
+- ./Miniconda3-latest-Linux-x86_64.sh
+- conda create -n myenv python=3.10
+- conda activate myenv
 
 # For evaluation:
 - cd $HOME
