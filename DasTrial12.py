@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 # Global variables
 USER = 'dsys2470'
 PASSWORD = ''
-DASHBOARD_PORT = 8790
+DASHBOARD_PORT = 0
 NODES_AMOUNT = 4
 NODE_THREADS = 16
 MAINNODE_IP = "127.0.0.1"  #Set later
-JOBWORKER_PORT = 8788
+JOBWORKER_PORT = 0
 JOBWORKER_URL = "127.0.0.1" #Set later
 SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
 CLAIM_TIME = '00:15:00'
