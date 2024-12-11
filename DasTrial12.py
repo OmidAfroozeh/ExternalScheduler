@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Global variables
-USER = 'dsys2470'
+USER = os.getlogin()
 PASSWORD = ''
 DASHBOARD_PORT = 8790
 NODES_AMOUNT = 4
@@ -77,13 +77,17 @@ def get_reserved_nodes():
 # Function to check and reserve resources
 def check_and_reserve_resources():
     reserved_nodes, total_reserved_nodes = get_reserved_nodes()
+    logger.info(f"Currently {total_reserved_nodes} nodes reserved. Trying to reserve more...")
+    nodes_needed = NODES_AMOUNT - total_reserved_nodes
+    subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', CLAIM_TIME])
     while total_reserved_nodes < NODES_AMOUNT:
-        logger.info(f"Currently {total_reserved_nodes} nodes reserved. Trying to reserve more...")
-        nodes_needed = NODES_AMOUNT - total_reserved_nodes
-        subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', CLAIM_TIME])
-        time.sleep(15)
         reserved_nodes, total_reserved_nodes = get_reserved_nodes()
-    logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
+        logger.info(f"Reserved nodes amount: {total_reserved_nodes}, wanted nodes: {NODES_AMOUNT}, Check status valid: {total_reserved_nodes > NODES_AMOUNT}")
+        if (total_reserved_nodes > NODES_AMOUNT):
+            logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
+        else:
+            logger.info(f"Not sufficient nodes reserved, trying again in {NODE_REQUEST_TIMEOUT} seconds.")
+        time.sleep(NODE_REQUEST_TIMEOUT)
     return reserved_nodes
 
 # Function to get node IP

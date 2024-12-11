@@ -8,6 +8,7 @@ import datetime as dt
 from dask.distributed import Client, performance_report
 import dask.dataframe as dd
 from dask_sql import Context
+from typing import Set
 
 #CONSTANTS
 DEBUG = False
@@ -81,7 +82,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Global variables
-USER = 'dsys2470'
+USER = os.getlogin()
 PASSWORD = ''
 DASHBOARD_PORT = 8790
 NODES_AMOUNT = 4
@@ -191,6 +192,7 @@ def check_and_reserve_resources():
     subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', CLAIM_TIME])
     while total_reserved_nodes < NODES_AMOUNT:
         reserved_nodes, total_reserved_nodes = get_reserved_nodes()
+        logger.info(f"Reserved nodes amount: {total_reserved_nodes}, wanted nodes: {NODES_AMOUNT}, Check status valid: {total_reserved_nodes > NODES_AMOUNT}")
         if (total_reserved_nodes > NODES_AMOUNT):
             logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
         else:
