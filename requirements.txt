@@ -2,8 +2,10 @@
 dask[distributed]                # For Dask distributed functionality
 dask[dataframe]                  # For Dask DataFrames
 dask[array]                      # For Dask Arrays
-dask[bag]                        # For Dask Bags
+dask[bag]
+dask-sql                      # For Dask Bags
 
+bokeh    #for the dashboard
 
 # Cluster management (optional, if using Kubernetes or similar)
 dask-kubernetes                   # Dask on Kubernetes
