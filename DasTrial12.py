@@ -237,9 +237,13 @@ def custom_decide_worker(
             {
                 "address": worker.address,
                 "memory_limit": worker.memory_limit,
-                # "memory_used": worker.memory,
+                "memory_used": worker.nbytes,
                 "cpu_cores": worker.nthreads,
                 "tasks_running": len(worker.processing),
+                "bandwidth": worker.bandwidth,
+                "time_delay": worker.time_delay,
+                "total_resources": worker.resources,
+                "used_resources": worker.used_resources
             }
             for worker in candidates
         ]
