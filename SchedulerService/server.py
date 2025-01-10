@@ -33,9 +33,9 @@ def choose_worker(workers, policy):
     elif policy == "shortest_bandwidth_latency":
         # Choose the worker with the shortest bandwidth latency
         workers = sorted(workers, key=lambda w: w["time_delay"])
-    elif policy == "highest_resource_availability":
-        # Choose the worker with the most unused resources
-        workers = sorted(workers, key=lambda w: w["total_resources"] - w["used_resources"], reverse=True)
+    # elif policy == "highest_resource_availability":
+    #     # Choose the worker with the most unused resources
+    #     workers = sorted(workers, key=lambda w: w["total_resources"] - w["used_resources"], reverse=True)
     elif policy == "composite_score":
         # Custom composite scoring based on memory, CPU, and bandwidth
         def composite_score(w):
@@ -48,6 +48,10 @@ def choose_worker(workers, policy):
     else:
         # Default to random selection if no valid policy is specified
         return random.choice(workers)
+
+    print(f"======= Sorted based on {policy} =======")
+    for i in range(len(workers)):
+        print(f"{i}- {workers[i]}")
 
     return workers[0] if workers else None
 
@@ -63,8 +67,9 @@ def submit_job():
         return jsonify({"error": "Invalid or missing 'workers'"}), 400
 
     # Log or process additional worker information
-    for worker in workers:
-        print(f"Worker Info: {worker}")
+    if policy_to_use == "random":
+        for worker in workers:
+            print(f"Worker Info: {worker}")
 
     # Choose a worker based on the specified policy
     chosen_worker = None
@@ -79,7 +84,7 @@ def submit_job():
 
     job_queue.put(job_data)
     job_status[job_id] = "queued"
-
+    print(f"---------- Chosen worker: {chosen_worker["address"]} ----------")
     return jsonify({
         "job_id": job_id,
         "status": "queued",
@@ -112,7 +117,7 @@ def remove_worker():
         print(f"Removed worker: {worker_id}")
         return jsonify({"status": "removed", "worker_id": worker_id}), 200
     else:
-        return jsonify({"error": "Worker not found"}), 404
+        return '', 204
 
 # Endpoint to check job status
 @app.route('/job_status/<job_id>', methods=['GET'])
@@ -133,4 +138,4 @@ threading.Thread(target=job_worker, daemon=True).start()
 
 if __name__ == '__main__':
     print(f"Using global policy: {policy}")
-    app.run(port=5000)
+    app.run(port=5002)

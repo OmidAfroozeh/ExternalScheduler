@@ -242,8 +242,8 @@ def custom_decide_worker(
                 "tasks_running": len(worker.processing),
                 "bandwidth": worker.bandwidth,
                 "time_delay": worker.time_delay,
-                "total_resources": worker.resources,
-                "used_resources": worker.used_resources
+                # "total_resources": worker.resources,
+                # "used_resources": worker.used_resources
             }
             for worker in candidates
         ]
