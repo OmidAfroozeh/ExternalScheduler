@@ -6,3 +6,4 @@
 /ExternalScheduler/.venv/
 *.pyc
 *.out
+*.html
