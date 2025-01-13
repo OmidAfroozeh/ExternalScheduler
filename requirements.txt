@@ -5,6 +5,12 @@ dask[array]                      # For Dask Arrays
 dask[bag]
 dask-sql                      # For Dask Bags
 
+#machine learning
+lightgbm
+scikit-learn
+tqdm
+dask-ml
+
 bokeh    #for the dashboard
 
 # Cluster management (optional, if using Kubernetes or similar)

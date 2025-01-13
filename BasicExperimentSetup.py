@@ -1,4 +1,6 @@
 #imports
+import dask
+import os
 import sys
 import time
 import re
@@ -8,14 +10,15 @@ import datetime as dt
 from dask.distributed import Client, performance_report
 import dask.dataframe as dd
 from dask_sql import Context
-from typing import Set
 
 #CONSTANTS
 DEBUG = False
 DISTRIBUTED = False
 TIMEFORMAT = "%a-%d-%b-%Y %H:%M:%S"
 DATA_FILE = './data/NYC_taxi_trips/yellow_tripdata_2014-02.parquet' # Base_File
-TABLE_NAME = "NYC_taxi_trips"
+
+MOVE_TO_SCRATCH_DIR = '/var/scratch/dsys2471'
+MOVE_TO_MAIN_DIR = '/home/dsys2471'
 
 
 #---------------------------------------------------------------------------------------------------------------------------
@@ -82,15 +85,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Global variables
-USER = os.getlogin()
+USER = 'dsys2471'
 PASSWORD = ''
-DASHBOARD_PORT = 8790
-NODES_AMOUNT = 4
-NODE_THREADS = 16
+DASHBOARD_PORT = 5005
+NODES_AMOUNT = 1
+NODE_THREADS = 4
 MAINNODE_IP = "127.0.0.1"  #Set later
-JOBWORKER_PORT = 8788
+JOBWORKER_PORT = 5006
 JOBWORKER_URL = "127.0.0.1" #Set later
-SCHEDULER_URL = f"http://0.0.0.0:5000" # For the Flask app
+SCHEDULER_URL = f"http://0.0.0.0:5001" # For the Flask app
 CLAIM_TIME = '00:15:00'
 INITIAL_LOCAL_WORKERS = 0 # Initial local workers.
 WORKERS_PER_NODE = 'auto' # Number of workers for the external nodes, set to auto to auto determine based on available cpu cores.
@@ -144,13 +147,6 @@ async def custom_remove_worker(
         close=close,
     )
 
-# Monkey Patching
-Scheduler.add_worker_original = Scheduler.add_worker
-Scheduler.add_worker = custom_add_worker
-
-Scheduler.remove_worker_original = Scheduler.remove_worker
-Scheduler.remove_worker = custom_remove_worker
-
 # Get the IP address of the main node
 def get_ip_address():
     try:
@@ -192,7 +188,6 @@ def check_and_reserve_resources():
     subprocess.run(['preserve', '-1', '-#', str(nodes_needed), '-t', CLAIM_TIME])
     while total_reserved_nodes < NODES_AMOUNT:
         reserved_nodes, total_reserved_nodes = get_reserved_nodes()
-        logger.info(f"Reserved nodes amount: {total_reserved_nodes}, wanted nodes: {NODES_AMOUNT}, Check status valid: {total_reserved_nodes > NODES_AMOUNT}")
         if (total_reserved_nodes > NODES_AMOUNT):
             logger.info(f"Sufficient nodes reserved. We have {len(reserved_nodes)} nodes.")
         else:
@@ -256,6 +251,8 @@ def custom_decide_worker(
         valid_workers: set[WorkerState] | None,
         objective: Callable[[WorkerState], Any],
 ) -> WorkerState | None:
+    if DEBUG:
+        print(cli_style(f"{get_time()}||EXECUTING CUSTOM_DECIDE_WORKER",YELLOW_CLI))
     """
     Custom logic to override Dask's original decide_worker function.
     This version prints the available workers and the chosen worker to test the override.
@@ -328,33 +325,55 @@ def is_flask_app_running():
 #Main code
 #-------------------------------------------------------------------------------------------------------------------------
 async def main():
-    pattern = 'data:.*'
-    regex = re.compile(pattern)
-    if len(list(filter(regex.match, sys.argv))) == 1: #check nr of data files provided, only except when 1 is given
+    password_pattern = 'passwd:.*'
+    password_regex = re.compile(password_pattern)
+    data_pattern = 'data:.*'
+    data_regex = re.compile(data_pattern)
+    if 'dbg' in sys.argv: #check if debug flag is given and enable debug prints
+        DEBUG = True
+        print(cli_style(f"{get_time()}||EXECUTING EXPERIMENT IN DEBUG MODE",YELLOW_CLI))
+
+    if 'patch' in sys.argv: #check if debug flag is given and enable debug prints
+        distributed.scheduler.decide_worker = custom_decide_worker
+        Scheduler.add_worker_original = Scheduler.add_worker
+        Scheduler.add_worker = custom_add_worker
+
+        Scheduler.remove_worker_original = Scheduler.remove_worker
+        Scheduler.remove_worker = custom_remove_worker
+        
+        print(cli_style(f"{get_time()}||MONKEY PATCHED",GREEN_CLI))
+    
+    if len(list(filter(password_regex.match, sys.argv))) == 1:
+        global PASSWORD
+        PASSWORD = list(filter(password_regex.match, sys.argv))[0][len(password_pattern) - 2:]
+        print(cli_style(f"{get_time()}||PASSWORD:{PASSWORD}|",GREEN_CLI))
+        
+    if len(list(filter(data_regex.match, sys.argv))) == 1: #check nr of data files provided, only except when 1 is given
                                                       #Otherwise Close Program
-        DATA_FILE = list(filter(regex.match, sys.argv))[0][len(pattern) - 2:]
+        os.chdir(MOVE_TO_SCRATCH_DIR) 
+        DATA_FILE = list(filter(data_regex.match, sys.argv))[0][len(data_pattern) - 2:]
         print(cli_style(f"{get_time()}||READING IN DATA",GREEN_CLI))
         try:
             df = dd.read_parquet(DATA_FILE)
             df = df.repartition(npartitions=10) 
+            if(DEBUG):
+                print(cli_style(f"{get_time()}||DataframeSize:{len(df)}",YELLOW_CLI))
 
         except (FileNotFoundError,FileExistsError) as e:
             print(cli_style(f"{get_time()}||DATA FILE NOT FOUND",RED_CLI))
             print(cli_style(f"{get_time()}||STOPPING EXECUTION",RED_CLI))
             return
-        except :
-            print(cli_style(f"{get_time()}||AN UNKOWN ERROR OCCURRED",RED_CLI))
+        except Exception as e:
+            print(cli_style(f"{get_time()}||{e}",RED_CLI))
             print(cli_style(f"{get_time()}||STOPPING EXECUTION",RED_CLI))
             return
-        
+        os.chdir(MOVE_TO_MAIN_DIR)
+
     else:
         print(cli_style(f"{get_time()}||INCORRECT NUMBER OF DATA FILES PROVIDED",RED_CLI))
         print(cli_style(f"{get_time()}||STOPPING EXECUTION",RED_CLI))
         return
     
-    if 'dbg' in sys.argv: #check if debug flag is given and enable debug prints
-        DEBUG = True
-        print(cli_style(f"{get_time()}||EXECUTING EXPERIMENT IN DEBUG MODE",YELLOW_CLI))
 
     if 'dstr' in sys.argv: #check if distributed flag is given to run on the DAS6 cluster
         DISTRIBUTED = True
@@ -369,36 +388,41 @@ async def main():
             node_ip = get_node_ip(node)
             if node_ip:
                 start_ssh_worker(node, node_ip)
-
-        #TODO
-
-        print(cli_style(f"{get_time()}||DISTRIBUTED MODE NOT YET IMPLEMENTED",RED_CLI))
     else:
         #Setup Local Cluster
         print(cli_style(f"{get_time()}||EXECUTING EXPERIMENT LOCALLY",GREEN_CLI))
         client = Client()
 
-    print(cli_style(f"{get_time()}||DASHBOARD AVAILABLE AT:{client.dashboard_link}",GREEN_CLI))
 
-    #Set up Server
-    if not is_flask_app_running():
-        os.system("python SchedulerService/server.py &")
-
-    #MonkeyPatching
-    #distributed.scheduler.decide_worker = custom_decide_worker
     #----------------------------------------------------------------------------------------------------------
     #Execute Query
     #----------------------------------------------------------------------------------------------------------
-    with performance_report(filename="./results/test_experiment.html"):    
+    # Generate a unique filename for the performance report
+
+    #RANDOM RAPORT NAME
+    report_filename = f"dask-report-{get_time()}.html"
+
+    #report_filename = f"dask-report-multiple_submits_test.html"
+
+    with performance_report(filename=f"./results/{report_filename}"):    
         c = Context()
-        c.create_table(TABLE_NAME, df, persist=True)
-        result = c.sql(f"""SELECT SUM(total_amount)
-        FROM {TABLE_NAME}
-        WHERE passenger_count == 2
+        c.create_table("NYC_taxi_trips", df, persist=True)
+        result = c.sql("""
+        SELECT 
+            SUM(total_amount)
+        FROM
+            NYC_taxi_trips
+        GROUP BY
+            passenger_count
         """)
         print(cli_style(f"{get_time()}||EXECUTING SQL QUERY",GREEN_CLI))
-        result = result.compute()
-        print(result)
+        results = client.map(dask.compute, [result for _ in range(10)])
+        client.gather(results)
+        print(cli_style(f"{get_time()}||Computation Complete",GREEN_CLI))
+
+    await client.close()
+    await cluster.close()
+    
    
 
     
