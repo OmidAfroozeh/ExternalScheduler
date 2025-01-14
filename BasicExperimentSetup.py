@@ -251,8 +251,6 @@ def custom_decide_worker(
         valid_workers: set[WorkerState] | None,
         objective: Callable[[WorkerState], Any],
 ) -> WorkerState | None:
-    if DEBUG:
-        print(cli_style(f"{get_time()}||EXECUTING CUSTOM_DECIDE_WORKER",YELLOW_CLI))
     """
     Custom logic to override Dask's original decide_worker function.
     This version prints the available workers and the chosen worker to test the override.
@@ -287,9 +285,13 @@ def custom_decide_worker(
             {
                 "address": worker.address,
                 "memory_limit": worker.memory_limit,
-                # "memory_used": worker.memory,
+                "memory_used": worker.nbytes,
                 "cpu_cores": worker.nthreads,
                 "tasks_running": len(worker.processing),
+                "bandwidth": worker.bandwidth,
+                "time_delay": worker.time_delay,
+                # "total_resources": worker.resources,
+                # "used_resources": worker.used_resources
             }
             for worker in candidates
         ]
@@ -325,6 +327,9 @@ def is_flask_app_running():
 #Main code
 #-------------------------------------------------------------------------------------------------------------------------
 async def main():
+    report_name_pattern = 'repn:.*'
+    report_name_regex = re.compile(report_name_pattern)
+
     password_pattern = 'passwd:.*'
     password_regex = re.compile(password_pattern)
     data_pattern = 'data:.*'
@@ -347,6 +352,12 @@ async def main():
         global PASSWORD
         PASSWORD = list(filter(password_regex.match, sys.argv))[0][len(password_pattern) - 2:]
         print(cli_style(f"{get_time()}||PASSWORD:{PASSWORD}|",GREEN_CLI))
+
+    if len(list(filter(report_name_regex.match, sys.argv))) == 1:
+        report_name = list(filter(report_name_regex.match, sys.argv))[0][len(report_name_pattern) - 2:]
+        print(cli_style(f"{get_time()}||PASSWORD:{report_name}|",GREEN_CLI))
+    else:
+        report_name = ''
         
     if len(list(filter(data_regex.match, sys.argv))) == 1: #check nr of data files provided, only except when 1 is given
                                                       #Otherwise Close Program
@@ -393,6 +404,9 @@ async def main():
         print(cli_style(f"{get_time()}||EXECUTING EXPERIMENT LOCALLY",GREEN_CLI))
         client = Client()
 
+    #Set up Server
+    #if not is_flask_app_running():
+    #    os.system("python SchedulerService/server.py &")
 
     #----------------------------------------------------------------------------------------------------------
     #Execute Query
@@ -400,14 +414,17 @@ async def main():
     # Generate a unique filename for the performance report
 
     #RANDOM RAPORT NAME
-    report_filename = f"dask-report-{get_time()}.html"
+    if report_name == '':
+        report_filename = f"dask-report-{get_time()}.html"
+    else:
+        report_filename = f"dask-report-{report_name}.html"
 
     #report_filename = f"dask-report-multiple_submits_test.html"
 
-    with performance_report(filename=f"./results/{report_filename}"):    
+    with performance_report(filename=f"./results/{report_filename}"): 
         c = Context()
         c.create_table("NYC_taxi_trips", df, persist=True)
-        result = c.sql("""
+        query = c.sql("""
         SELECT 
             SUM(total_amount)
         FROM
@@ -416,7 +433,9 @@ async def main():
             passenger_count
         """)
         print(cli_style(f"{get_time()}||EXECUTING SQL QUERY",GREEN_CLI))
-        results = client.map(dask.compute, [result for _ in range(10)])
+        results = []
+        for i in list(range(20)):
+            results.append(client.map(dask.compute, query))
         client.gather(results)
         print(cli_style(f"{get_time()}||Computation Complete",GREEN_CLI))
 
