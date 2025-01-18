@@ -1,21 +1,33 @@
 # ExternalScheduler
 ## Installation 
-To setup the project, you should make a python VENV, which needs some packages:
+To setup the project, you should make a Miniconda environment to use newer python versions on DAS-6:
 
-First install Dask by using:
-```python -m pip install dask distributed --upgrade```
+### Set up Miniconda
+- wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+- chmod +x Miniconda3-latest-Linux-x86_64.sh
+- ./Miniconda3-latest-Linux-x86_64.sh
+- conda create -n myenv python=3.10
+- conda activate myenv
 
-Then, for the dashboard, dask will need bokeh>=3.1.0 to work.
-- Install with conda: ```conda install "bokeh>=3.1.0"```
-- Install with pip: ```pip install "bokeh>=3.1.0"```
+### Install additional libraries
+-pip install -r requirements.txt
 
 ## Execution
-To run the project, just use the run button of your IDE.
-After it has been run it should have a dashboard available at 
-```http://127.0.0.1:8787/status```
+### Server
+-python SchedulerService/server.py
 
+### SQL_experimentation
+#### Required command line arguments:
+-dstr = run distributed, technically optional but then we run on the local machine. In case of DAS-6 this is the main node!
+-data:<name of  data file>, data file has to be present in the var/scratch/<user> foler. Thus, data:nyc_taxi_2014_data.parquet reads in the data from var/scratch/<user>/nyc_taxi_2014_data.parquet
+#### Optional command line arguments
+-dbg = run in debug mode
+-passwd: provide the password of the user to automatically connect to the nodes of dask to start the workers
 
-To enter DAS virtual python environment input command:
-source /.venv/bin/activate
-
+### Pipeline_experimentation
+#### Required command line arguments:
+-dstr = run distributed, technically optional but then we run on the local machine. In case of DAS-6 this is the main node!
+#### Optional command line arguments
+-dbg = run in debug mode
+-passwd: provide the password of the user to automatically connect to the nodes of dask to start the workers
 
