@@ -19,6 +19,7 @@ To setup the project, you should make a Miniconda environment to use newer pytho
 ### SQL_experimentation
 #### Required command line arguments:
 -dstr = run distributed, technically optional but then we run on the local machine. In case of DAS-6 this is the main node!
+
 -data:<name of  data file>, data file has to be present in the var/scratch/<user> foler. Thus, data:nyc_taxi_2014_data.parquet reads in the data from var/scratch/<user>/nyc_taxi_2014_data.parquet
 #### Optional command line arguments
 -dbg = run in debug mode
